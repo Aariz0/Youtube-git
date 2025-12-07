@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Snake Game — For Aariz</title>
+  <style>
+    :root{ --outer-bg: #1f8a3d; --game-bg: #fff28a; --grid: rgba(0,0,0,0.06); }
+    html,body{ height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial; background:var(--outer-bg); display:flex; align-items:center; justify-content:center; }
+    .wrap{ width:820px; max-width:96vw; background:linear-gradient(180deg,#e8ffd8,#d9f6c7); padding:22px; border-radius:16px; box-shadow:0 12px 30px rgba(0,0,0,0.25); }
+    header{ display:flex; gap:12px; align-items:center; margin-bottom:12px; }
+    h1{ font-size:20px; margin:0; }
+    .controls{ margin-left:auto; display:flex; gap:8px; align-items:center; }
+    button{ background:#ffffffcc; border:1px solid rgba(0,0,0,0.08); padding:8px 12px; border-radius:10px; cursor:pointer; }
+    button:active{ transform:translateY(1px); }
+    .game-row{ display:flex; gap:16px; align-items:flex-start; }
+    .stage{ background:var(--game-bg); border-radius:10px; padding:12px; box-shadow:inset 0 4px 10px rgba(0,0,0,0.06); }
+    canvas{ display:block; background:transparent; border-radius:6px; }
+    .info{ color:#0b2b12; }
+    .score{ font-weight:700; font-size:18px; }
+    .hint{ font-size:13px; opacity:0.9; margin-top:8px; }
+    .footer{ margin-top:10px; font-size:13px; opacity:0.95; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Snake — made for Aariz</h1>
+      <div class="controls">
+        <div class="info"><div class="score">Score: <span id="score">0</span></div><div class="hint">Use <strong>Arrow keys</strong> or <strong>W A S D</strong>. Press <strong>P</strong> to pause.</div></div>
+        <button id="btnRestart">Restart</button>
+        <button id="btnSpeed">Speed: 8</button>
+      </div>
+    </header>
+
+    <div class="game-row">
+      <div class="stage">
+        <canvas id="game" width="640" height="640" style="width:640px;height:640px"></canvas>
+      </div>
+      <div style="min-width:180px; color:#072">
+        <div style="background:#fff; padding:12px; border-radius:10px">Controls
+          <ul>
+            <li>Move: Arrow keys or WASD</li>
+            <li>Pause: P</li>
+            <li>Restart: Restart button</li>
+          </ul>
+        </div>
+        <div class="footer">Grid boxes, bigger snake, and a little face on the snake head — enjoy!</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const btnRestart = document.getElementById('btnRestart');
+  const btnSpeed = document.getElementById('btnSpeed');
+
+  // Settings
+  const TILE = 32;                 // size of one box
+  const COLS = canvas.width / TILE; // 20 if 640/32
+  const ROWS = canvas.height / TILE; // 20
+  let speed = 8; // frames per second
+
+  // Game state
+  let snake = []; // array of {x,y}
+  let dir = {x:1, y:0};
+  let nextDir = {x:1, y:0};
+  let apple = {x:5, y:5};
+  let score = 0;
+  let running = true;
+  let tickCount = 0;
+
+  function reset(){
+    // Start with longer snake (bigger)
+    snake = [];
+    const startLen = 6;
+    const startX = Math.floor(COLS/2) - startLen;
+    const startY = Math.floor(ROWS/2);
+    for(let i=0;i<startLen;i++) snake.push({x: startX + i, y: startY});
+    dir = {x:1, y:0}; nextDir = {x:1,y:0};
+    placeApple();
+    score = 0; running = true; tickCount = 0;
+    scoreEl.textContent = score;
+  }
+
+  function placeApple(){
+    while(true){
+      const x = Math.floor(Math.random()*COLS);
+      const y = Math.floor(Math.random()*ROWS);
+      if(!snake.some(s=>s.x===x && s.y===y)) { apple = {x,y}; break; }
+    }
+  }
+
+  function drawGrid(){
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--game-bg') || '#fff28a';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+    for(let x=0;x<=canvas.width; x+=TILE){ ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); }
+    for(let y=0;y<=canvas.height; y+=TILE){ ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); }
+    ctx.stroke();
+  }
+
+  function drawApple(){
+    const cx = apple.x * TILE + TILE/2;
+    const cy = apple.y * TILE + TILE/2;
+    const r = TILE*0.36;
+    // shadow
+    ctx.beginPath(); ctx.fillStyle = 'rgba(0,0,0,0.08)'; ctx.ellipse(cx+4, cy+6, r*0.9, r*0.45, 0, 0, Math.PI*2); ctx.fill();
+    // body
+    ctx.beginPath(); ctx.fillStyle = '#e12b2b'; ctx.ellipse(cx, cy, r, r, 0, 0, Math.PI*2); ctx.fill();
+    // leaf
+    ctx.save(); ctx.translate(cx + r*0.5, cy - r*0.6); ctx.rotate(-0.6);
+    ctx.beginPath(); ctx.fillStyle = '#2f8b2f'; ctx.ellipse(0,0, r*0.45, r*0.2, 0, 0, Math.PI*2); ctx.fill(); ctx.restore();
+    // shine
+    ctx.beginPath(); ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.ellipse(cx - r*0.35, cy - r*0.35, r*0.18, r*0.12, 0, 0, Math.PI*2); ctx.fill();
+  }
+
+  function drawSnake(){
+    for(let i=0;i<snake.length;i++){
+      const s = snake[i];
+      const x = s.x * TILE; const y = s.y * TILE;
+      // body color gradient
+      const t = i / snake.length;
+      const g = Math.floor(120 + 80 * (1 - t));
+      ctx.fillStyle = `rgb(${40},${g},${40})`;
+      ctx.fillRect(x+2, y+2, TILE-4, TILE-4);
+    }
+    // draw face on head
+    const head = snake[snake.length-1];
+    const hx = head.x * TILE; const hy = head.y * TILE;
+    // eyes relative to direction
+    ctx.fillStyle='#0a2';
+    const eyeSize = Math.max(2, Math.floor(TILE*0.12));
+    let ex1 = hx + TILE*0.28, ey1 = hy + TILE*0.28;
+    let ex2 = hx + TILE*0.28, ey2 = hy + TILE*0.72;
+    if(dir.x === 1){ ex1 = hx + TILE*0.6; ex2 = hx + TILE*0.6; ey1 = hy + TILE*0.28; ey2 = hy + TILE*0.72; }
+    if(dir.x === -1){ ex1 = hx + TILE*0.4 - TILE*0.12; ex2 = hx + TILE*0.4 - TILE*0.12; ey1 = hy + TILE*0.28; ey2 = hy + TILE*0.72; }
+    if(dir.y === 1){ ey1 = hy + TILE*0.6; ey2 = hy + TILE*0.6; ex1 = hx + TILE*0.28; ex2 = hx + TILE*0.72; }
+    if(dir.y === -1){ ey1 = hy + TILE*0.4 - TILE*0.12; ey2 = hy + TILE*0.4 - TILE*0.12; ex1 = hx + TILE*0.28; ex2 = hx + TILE*0.72; }
+    ctx.fillStyle = '#052';
+    ctx.beginPath(); ctx.arc(ex1, ey1, eyeSize, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(ex2, ey2, eyeSize, 0, Math.PI*2); ctx.fill();
+    // smile
+    ctx.beginPath(); ctx.strokeStyle = '#053'; ctx.lineWidth = 2; ctx.arc(hx + TILE/2, hy + TILE/2 + TILE*0.12, TILE*0.18, 0.1*Math.PI, 0.9*Math.PI); ctx.stroke();
+  }
+
+  function update(){
+    // apply next dir but prevent reversing
+    if((nextDir.x !== -dir.x || nextDir.y !== -dir.y) && (nextDir.x !== dir.x || nextDir.y !== dir.y)){
+      dir = nextDir;
+    }
+
+    const head = {...snake[snake.length-1]};
+    head.x += dir.x; head.y += dir.y;
+
+    // wrap-around behavior
+    if(head.x < 0) head.x = COLS -1;
+    if(head.x >= COLS) head.x = 0;
+    if(head.y < 0) head.y = ROWS -1;
+    if(head.y >= ROWS) head.y = 0;
+
+    // collision with self?
+    if(snake.some(s => s.x === head.x && s.y === head.y)){
+      running = false; // game over
+      flashGameOver();
+      return;
+    }
+
+    // move
+    snake.push(head);
+
+    // ate apple?
+    if(head.x === apple.x && head.y === apple.y){
+      score += 1; scoreEl.textContent = score; placeApple();
+    } else {
+      snake.shift(); // remove tail
+    }
+  }
+
+  function flashGameOver(){
+    // simple effect and restart after short time
+    const oldSpeed = speed;
+    running = false;
+    // show game over text
+    ctx.save(); ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#fff'; ctx.font='36px system-ui'; ctx.textAlign='center'; ctx.fillText('Game Over', canvas.width/2, canvas.height/2 - 10);
+    ctx.font='18px system-ui'; ctx.fillText('Press Restart or R to play again', canvas.width/2, canvas.height/2 + 24);
+    ctx.restore();
+  }
+
+  function draw(){
+    drawGrid();
+    drawApple();
+    drawSnake();
+  }
+
+  // Game loop using requestAnimationFrame but stepping at 'speed'
+  let last = 0;
+  function loop(ts){
+    if(!last) last = ts;
+    const delta = ts - last;
+    const interval = 1000 / speed;
+    if(delta >= interval){
+      last = ts - (delta % interval);
+      if(running){ update(); }
+      draw();
+    } else {
+      // still draw to show paused or intro
+      draw();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // Input
+  window.addEventListener('keydown', e => {
+    const key = e.key.toLowerCase();
+    if(key === 'arrowup' || key === 'w') nextDir = {x:0,y:-1};
+    if(key === 'arrowdown' || key === 's') nextDir = {x:0,y:1};
+    if(key === 'arrowleft' || key === 'a') nextDir = {x:-1,y:0};
+    if(key === 'arrowright' || key === 'd') nextDir = {x:1,y:0};
+    if(key === 'p') running = !running; // pause
+    if(key === 'r') { reset(); }
+  });
+
+  // Buttons
+  btnRestart.addEventListener('click', ()=> reset());
+  btnSpeed.addEventListener('click', ()=>{ speed = speed === 8 ? 12 : speed === 12 ? 16 : 8; btnSpeed.textContent = 'Speed: ' + speed; });
+
+  // Touch: simple swipe support
+  let touchStart = null;
+  canvas.addEventListener('touchstart', e=>{ const t = e.touches[0]; touchStart = {x:t.clientX, y:t.clientY}; });
+  canvas.addEventListener('touchend', e=>{ if(!touchStart) return; const t = e.changedTouches[0]; const dx = t.clientX - touchStart.x, dy = t.clientY - touchStart.y; if(Math.abs(dx) > Math.abs(dy)){ if(dx>20) nextDir={x:1,y:0}; else if(dx<-20) nextDir={x:-1,y:0}; } else { if(dy>20) nextDir={x:0,y:1}; else if(dy<-20) nextDir={x:0,y:-1}; } touchStart=null; });
+
+  // initialize
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
